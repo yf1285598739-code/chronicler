@@ -1,0 +1,55 @@
+name: Build Chinese Version (zh-cn)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Disable updater artifacts (fork has no signing secrets)
+        shell: bash
+        run: |
+          node -e "const fs=require('fs');const p='src-tauri/tauri.conf.json';const c=JSON.parse(fs.readFileSync(p,'utf8'));c.bundle.createUpdaterArtifacts=false;if(c.plugins&&c.plugins.updater){c.plugins.updater.active=false;}fs.writeFileSync(p,JSON.stringify(c,null,2));console.log('patched: updater disabled');"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Sync SvelteKit
+        run: pnpm exec svelte-kit sync
+
+      - name: Build Tauri app
+        run: pnpm tauri build --target x86_64-pc-windows-msvc
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: chronicler-zh-cn-windows
+          path: |
+            src-tauri/target/x86_64-pc-windows-msvc/release/chronicler.exe
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle
+          if-no-files-found: error
+          retention-days: 14
